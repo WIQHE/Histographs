@@ -45,27 +45,83 @@ Breast cancer classification using histopathological images is crucial for accur
 
 ---
 
-## 🔬 3. Methodology
-### 🛠️ Step 1: Preprocessing and Graph Construction
-- **🧹 Preprocessing:**
-  - Convert images to grayscale or RGB standardization.
-  - Normalize pixel intensities.
-  - Data augmentation (rotation, flipping, scaling) to handle class imbalance.
+# 🔬 3. Methodology
+## 🛠️ Step 1: Graph Construction Pipeline (with Biological Motivation)
 
-- **📌 Graph Representation of Images:**
-  - Extract nuclei and cellular structures using **CellViT** (or a nuclei segmentation tool like HoVer-Net).
-  - Construct graphs where:
-    - **🟢 Nodes** represent detected nuclei or tissue regions.
-    - **🔵 Edges** represent spatial relationships, morphological similarities, or distance-based connections.
+### 📌 Step 1: Nuclei Segmentation and Feature Extraction
+We use **HoVer-Net** (via TIAToolbox) to segment nuclei from H&E images and extract:
+- **Centroids (x, y):** spatial position of each nucleus
+- **Type labels:** predicted cell categories
+> 0 - Background (ignored) 1 - Epithelial (tumor cells) 2 - Lymphocyte 3 - Macrophage 4 - Neutrophil
+ 
+Each nucleus becomes a **node** in the graph with spatial and type attributes.
 
-### ⚡ Step 2: Deep Learning Baseline Model
-- **🖼️ Backbone Architectures:** ResNet-50, EfficientNet-B3, Vision Transformers (ViTs).
-- **⚖️ Class Imbalance Handling:**
-  - Weighted Cross-Entropy loss 🏋️
-  - Focal Loss 🎯
-  - SMOTE (Synthetic Minority Over-sampling) 🔄
+---
 
-### 🏗️ Step 3: Graph Neural Network (GNN) Model
+### 🔗 Step 2: Building the Heterogeneous Nuclei Graph
+
+We construct a **multi-edge heterogeneous graph** using two biologically grounded edge types:
+
+#### 🔸 A. Spatial Edges (Tissue Structure)  
+We use **Delaunay triangulation** on the nuclei centroids to model the natural spatial organization of cells.  
+Then, we filter connections to only those within **50 pixels (~12.5 µm @ 40× magnification)**.
+
+> **Biological Intuition:** Cells in real tissue interact primarily with their physical neighbors. Delaunay triangulation ensures that each cell is connected to its immediate surroundings without arbitrary choices of k or radius.
+
+#### 🔺 B. Functional Edges (Tumor–Immune Interactions)  
+We add edges only between:
+- **Epithelial (type 1)** and **Immune cells** (types 2, 3, 4)  
+- **If they are within 100 pixels (~25 µm)**
+
+This range is based on published biomedical research showing that immune cell signaling (e.g., T cell–tumor killing, cytokine secretion, PD-L1 engagement) is only biologically relevant at distances ≤ 25 µm.
+
+> **Biological Intuition:**  
+> - T cells must be close to tumor cells to deliver cytotoxic effects.  
+> - Macrophages and neutrophils also require close contact for paracrine or juxtacrine signaling.  
+> - This ensures we model only **biologically plausible** interactions, avoiding overly dense or noisy graphs.
+
+---
+
+### 🧩 Final Graph Structure
+
+We use a **NetworkX `MultiGraph`**, which allows:
+- **Multiple edges** between the same node pair (e.g., spatial + functional)
+- Clear tagging using the `edge_type` attribute (`"spatial"` or `"functional"`)
+
+Each node stores:
+- `(x, y)` coordinates
+- `nucleus_type`: semantic category (1–4)
+
+Each edge stores:
+- `edge_type`: either `"spatial"` or `"functional"`
+- `distance`: Euclidean distance between nuclei
+- For functional edges: `interaction_type`: e.g. `"1-2"` (epithelial–lymphocyte)
+
+---
+
+### 🖼️ Visualization & Interpretation
+
+- **Gray edges:** spatial adjacency (Delaunay + threshold)
+- **Red edges:** tumor–immune interaction (epithelial–immune within 25 µm)
+- **Node color:** nucleus type
+
+Clusters of thick red edges often indicate **immune cell hotspots** or **tumor-infiltrating immune regions**, which are **biologically significant** and may impact prognosis.
+
+---
+
+### 🔧 Tools Used
+
+| Task                          | Tool                         |
+|-------------------------------|------------------------------|
+| Nuclei segmentation           | TIAToolbox + HoVer-Net       |
+| Graph construction            | `scipy.spatial.Delaunay`     |
+| Graph modeling                | `networkx.MultiGraph`        |
+| Visualization                 | `matplotlib`, `networkx.draw` |
+| Distance computation          | `numpy.linalg.norm`          |
+
+---
+
+## ⚡ Step 2: Graph Neural Network (GNN) Model
 1. **📍 Graph Construction Approaches:**
    - **🔺 Delaunay Triangulation:** Connects nearest nuclei to capture tissue structure.
    - **📌 K-Nearest Neighbors (KNN) Graphs:** Defines connectivity based on spatial proximity.
