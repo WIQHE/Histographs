@@ -7,7 +7,7 @@ This repository implements a **weakly supervised graph neural network (GNN)** pi
 ## 📌 Overview
 
 The pipeline addresses:
-- The challenge of learning from graph-level labels without instance-level (nucleus-level) supervision.
+- The challenge of learning from graph-level labels with instance-level (nucleus-level) supervision.
 - The need to capture biologically meaningful tissue structures and interactions.
 - The problem of scale and redundancy in large tissue graphs.
 
