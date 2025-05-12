@@ -1,69 +1,65 @@
 # 🧠 Weakly Supervised Graph Attention Network for Breast Cancer Subtype Classification
 
-This repository implements a **weakly supervised graph neural network (GNN)** pipeline for **breast cancer subtype classification** using **H&E histopathology images**. The method focuses on modeling **cell-cell interactions** via nuclei-based graphs and leverages **attention-based subgraph selection** using GAT.
+This repository implements a **weakly supervised GNN** pipeline for classifying breast cancer subtypes using the **BACH dataset**. The model uses **nuclei graphs constructed from H&E-stained whole slide images (WSIs)** and trains on **attention-weighted subgraphs** selected from larger tissue graphs.
 
 ---
 
 ## 📌 Overview
 
-The pipeline addresses:
-- The challenge of learning from graph-level labels with instance-level (nucleus-level) supervision.
-- The need to capture biologically meaningful tissue structures and interactions.
-- The problem of scale and redundancy in large tissue graphs.
+- **Dataset**: [ICIAR 2018 BACH Challenge](https://iciar2018-challenge.grand-challenge.org/)
+- **Segmentation model**: HoVer-Net (`hovernet_fast-monusac` and `hovernet_fast_pannuke`)
+- **Graph model**: 2-layer GAT with attention-based top-𝑘 subgraph selection
+- **Task**: 4-class subtype classification using weakly supervised graph labels
 
 ---
 
-## 🧬 Methodology
+## 🧬 Pipeline Summary
 
-### 🔹 Nuclei Detection
-- Performed using **HoVer-Net** via [TIAToolbox](https://github.com/TIA-Lab/tiatoolbox)
-- Extracted features per nucleus:
-  - Centroid coordinates (x, y)
-  - Nucleus type (e.g., tumor, lymphocyte, stroma)
-  - Morphological features: area, perimeter, eccentricity, solidity, circularity
+### 🧠 Nuclei Detection
+- HoVer-Net is applied using **TIAToolbox**.
+- Two detection variants used:
+  - `hovernet_fast-monusac` → `n_detected/`
+  - `hovernet_fast-pannuke` → `n_detected_pannuke/`
+- Outputs are `.dat` files containing per-nucleus centroids and types.
 
-### 🔹 Graph Construction
-- **Nodes**: Each nucleus with concatenated spatial, categorical, and morph features.
-- **Edges**:
-  - Built using **Delaunay triangulation** with a spatial threshold (e.g., 90 µm).
-  - Edge attributes include inverse distance and nucleus-type interactions.
-- Graphs are saved in `.pt` format using `torch_geometric.data.Data`.
+### 🕸️ Graph Construction
+- Full graphs are constructed using `networkx.MultiGraph`.
+- Nodes: nuclei with (x, y), type, and morph features.
+- Edges: constructed using Delaunay triangulation with distance and interaction filters.
+- Output saved in `.graphml` or `.pt`.
 
-### 🔹 Subgraph Sampling (Weak Supervision)
-- Localized subgraphs are extracted around **type-1 (tumor)** nuclei.
-- Each subgraph inherits the graph-level label (no nucleus-level labels used).
-- During training and evaluation:
-  - All subgraphs are scored using **GAT attention weights**.
-  - The **top 8 subgraphs** (by mean attention score) are selected for learning.
-  - Logits from these are averaged to form the graph-level prediction.
+### 🧩 Subgraph Construction
+- Local subgraphs created with a **sliding window**:
+  - Window size = 100
+  - Step size = 50
+- Subgraphs inherit graph labels for **weak supervision**.
+- Top-8 subgraphs selected using **GAT attention weights** for training.
 
 ---
 
-## 🔗 Model
+## 🔗 Learning Model
 
-- Architecture: 2-layer **Graph Attention Network (GAT)** using PyTorch Geometric.
-- Heads: 8 in first layer, 1 in second layer (collapsed).
-- Final representation is pooled and passed to a classifier.
-- Attention weights are used for interpretability and subgraph selection.
-
----
-
-## 📊 Evaluation
-
-- Train/Test split using `metadata.csv` (80/20).
-- Evaluation metrics (via `scikit-learn`):
-  - Accuracy
-  - Classification report (Precision, Recall, F1-score)
-  - Confusion matrix
-- Top-𝑘 subgraph predictions are aggregated to compute graph-level logits.
+- **Graph Model**: GAT (Graph Attention Network)
+  - 8-head attention in the first layer, 1-head in the second
+- **Training**:
+  - Average logits from top-8 attentive subgraphs
+  - Graph-level labels used (no nucleus-level supervision)
+- **Evaluation**:
+  - Accuracy, precision, recall, F1-score, confusion matrix
 
 ---
 
-## 🛠️ Tools and Libraries
+## 📁 Directory Structure and File Descriptions
 
-- Segmentation: [TIAToolbox](https://github.com/TIA-Lab/tiatoolbox)
-- Graph processing: `networkx`, `scipy`, `torch_geometric`
-- Modeling: `torch`, `torch_geometric`
-- Evaluation: `scikit-learn`, `matplotlib`, `seaborn`
+| Path / File                       | Description                                                                 |
+|----------------------------------|-----------------------------------------------------------------------------|
+| `dataset/`                       | Contains BACH images, metadata, and generated graphs (2018 ICAIR Challenge)                       |
+| `n_detected/`                    | HoVer-Net `hovernet_fast-monusac` output (.dat) for BACH nuclei detection  |
+| `n_detected_pannuke/`           | HoVer-Net `hovernet_fast-pannuke` output (.dat) on the same BACH data      |
+| `n_detect.ipynb`                | Notebook to run HoVer-Net segmentation and generate `.dat` files            |
+| `graphs_construction.ipynb`     | Creates large tissue graphs from nuclei features and saves as `.pt`         |
+| `subgraphs_construction.ipynb`  | Builds subgraphs using sliding window and trains GAT model (with eval)      |
+| `metadata.csv`                  | Master CSV with `graph_path`, `label` used for training/testing split       |
+| `requirements.txt`              | List of dependencies (Torch, PyG, TIAToolbox, etc.)                         |
 
-
+---
